@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 import { AppError } from '../middleware/errorHandler';
-import { sendOrderUpdate, sendOrderConfirmation } from '../services/whatsapp.service';
+import { sendOrderUpdate } from '../services/whatsapp.service';
 
 export async function getAllOrders(req: Request, res: Response, next: NextFunction) {
   try {

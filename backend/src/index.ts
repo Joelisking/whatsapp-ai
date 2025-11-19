@@ -8,6 +8,7 @@ import { config } from './config';
 import { errorHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
 import whatsappRoutes from './routes/whatsapp.routes';
+import webhookRoutes from './routes/webhook.routes';
 import productRoutes from './routes/product.routes';
 import orderRoutes from './routes/order.routes';
 import customerRoutes from './routes/customer.routes';
@@ -34,12 +35,13 @@ app.use(cookieParser());
 app.use(rateLimiter);
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Routes
 app.use('/api/webhook/whatsapp', whatsappRoutes);
+app.use('/api/webhook', webhookRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);

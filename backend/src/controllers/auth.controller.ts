@@ -28,13 +28,8 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     }
 
     const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      },
-      config.jwt.secret,
-      { expiresIn: config.jwt.expiresIn }
+      { id: user.id, email: user.email, role: user.role },
+      config.jwt.secret
     );
 
     res.cookie('token', token, {
@@ -85,13 +80,8 @@ export async function register(req: Request, res: Response, next: NextFunction) 
     });
 
     const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      },
-      config.jwt.secret,
-      { expiresIn: config.jwt.expiresIn }
+      { id: user.id, email: user.email, role: user.role },
+      config.jwt.secret
     );
 
     res.cookie('token', token, {
@@ -115,7 +105,7 @@ export async function register(req: Request, res: Response, next: NextFunction) 
   }
 }
 
-export async function logout(req: Request, res: Response) {
+export async function logout(_req: Request, res: Response) {
   res.clearCookie('token');
   res.json({ message: 'Logged out successfully' });
 }

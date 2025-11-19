@@ -1,3 +1,8 @@
+// Stripe service is currently not in use - using Paystack instead
+// To enable Stripe, install the package: npm install stripe
+// And add config.stripe.secretKey and config.stripe.webhookSecret to config/index.ts
+
+/*
 import Stripe from 'stripe';
 import { config } from '../config';
 
@@ -120,4 +125,35 @@ export function constructWebhookEvent(payload: string | Buffer, signature: strin
     console.error('Stripe webhook validation error:', error);
     throw new Error('Invalid webhook signature');
   }
+}
+*/
+
+// Placeholder exports to avoid breaking imports
+export interface CreatePaymentIntentParams {
+  amount: number;
+  currency: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  orderId: string;
+  metadata?: Record<string, string>;
+}
+
+export async function createPaymentIntent(_params: CreatePaymentIntentParams) {
+  throw new Error('Stripe is not configured. Use Paystack instead.');
+}
+
+export async function createPaymentLink(_params: CreatePaymentIntentParams) {
+  throw new Error('Stripe is not configured. Use Paystack instead.');
+}
+
+export async function getPaymentStatus(_paymentIntentId: string) {
+  throw new Error('Stripe is not configured. Use Paystack instead.');
+}
+
+export async function refundPayment(_paymentIntentId: string, _amount?: number) {
+  throw new Error('Stripe is not configured. Use Paystack instead.');
+}
+
+export function constructWebhookEvent(_payload: string | Buffer, _signature: string) {
+  throw new Error('Stripe is not configured. Use Paystack instead.');
 }

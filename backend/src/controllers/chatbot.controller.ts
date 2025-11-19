@@ -1,12 +1,17 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { generateAIResponse, detectIntent, extractProductsFromMessage } from '../services/ai.service';
-import { sendWhatsAppMessage, sendPaymentLink, sendOrderConfirmation, parseWebhookMessage, verifyWebhook } from '../services/whatsapp.service';
+import { sendWhatsAppMessage, sendPaymentLink, parseWebhookMessage, verifyWebhook } from '../services/whatsapp.service';
 import { initializePayment, normalizeCurrency } from '../services/paystack.service';
 import { saveConversationContext, getConversationContext } from '../services/redis.service';
 
 export async function handleIncomingMessage(req: Request, res: Response) {
   try {
+    console.log('=== Incoming WhatsApp Webhook ===');
+    console.log('Method:', req.method);
+    console.log('Query:', JSON.stringify(req.query));
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+
     // Handle WhatsApp webhook verification
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -156,10 +161,16 @@ export async function handleIncomingMessage(req: Request, res: Response) {
       ].slice(-10), // Keep last 10 messages
     });
 
-    res.status(200).send('OK');
-  } catch (error) {
-    console.error('Error handling incoming message:', error);
-    res.status(500).send('Error processing message');
+    return res.status(200).send('OK');
+  } catch (error: any) {
+    console.error('=== Error handling incoming message ===');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Full error:', error);
+    return res.status(500).json({
+      error: 'Error processing message',
+      message: error.message
+    });
   }
 }
 
