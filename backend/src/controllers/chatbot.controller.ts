@@ -2,8 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { generateAIResponse, detectIntent, extractProductsFromMessage } from '../services/ai.service';
 import { sendWhatsAppMessage, sendPaymentLink, sendOrderConfirmation, parseWebhookMessage, verifyWebhook } from '../services/whatsapp.service';
-import { createPaymentLink } from '../services/stripe.service';
-import { initializePayment, isGhanaianCustomer, normalizeCurrency } from '../services/paystack.service';
+import { initializePayment, normalizeCurrency } from '../services/paystack.service';
 import { saveConversationContext, getConversationContext } from '../services/redis.service';
 
 export async function handleIncomingMessage(req: Request, res: Response) {
@@ -242,67 +241,40 @@ async function handlePurchaseIntent(
       },
     });
 
-    // Detect payment provider based on customer location
-    const usePaystack = isGhanaianCustomer(phoneNumber);
-    const paymentProvider = usePaystack ? 'paystack' : 'stripe';
-
-    let paymentUrl: string;
-    let paymentReference: string;
-
-    if (usePaystack) {
-      // Use Paystack for Ghanaian customers
-      const currency = normalizeCurrency(product.currency);
-      const payment = await initializePayment({
-        amount: totalAmount,
-        currency,
-        customerEmail: customer!.email || `customer-${customer!.id}@placeholder.com`,
-        customerPhone: phoneNumber,
-        orderId: order.id,
-        metadata: {
-          orderNumber,
-          paymentProvider: 'paystack',
-        },
-      });
-
-      paymentUrl = payment.authorizationUrl;
-      paymentReference = payment.reference;
-    } else {
-      // Use Stripe for international customers
-      const payment = await createPaymentLink({
-        amount: totalAmount,
-        currency: product.currency,
-        customerPhone: phoneNumber,
-        orderId: order.id,
-        metadata: {
-          orderNumber,
-          paymentProvider: 'stripe',
-        },
-      });
-
-      paymentUrl = payment.url;
-      paymentReference = payment.paymentLinkId;
-    }
+    // Use Paystack for payment processing
+    const currency = normalizeCurrency(product.currency);
+    const payment = await initializePayment({
+      amount: totalAmount,
+      currency,
+      customerEmail: customer!.email || `customer-${customer!.id}@placeholder.com`,
+      customerPhone: phoneNumber,
+      orderId: order.id,
+      metadata: {
+        orderNumber,
+        paymentProvider: 'paystack',
+      },
+    });
 
     // Update order with payment reference
     await prisma.order.update({
       where: { id: order.id },
       data: {
-        paymentIntentId: paymentReference,
+        paymentIntentId: payment.reference,
         metadata: {
-          paymentProvider,
+          paymentProvider: 'paystack',
         },
       },
     });
 
     // Send payment link via WhatsApp
-    await sendPaymentLink(phoneNumber, paymentUrl, totalAmount, product.currency, paymentProvider);
+    await sendPaymentLink(phoneNumber, payment.authorizationUrl, totalAmount, currency, 'paystack');
 
     // Save AI message
     await prisma.message.create({
       data: {
         conversationId,
         sender: 'AI',
-        content: `Payment link sent for ${quantity}x ${product.name} via ${paymentProvider === 'paystack' ? 'Paystack' : 'Stripe'}`,
+        content: `Payment link sent for ${quantity}x ${product.name}`,
       },
     });
 
