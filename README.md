@@ -8,7 +8,7 @@ A complete WhatsApp AI chatbot system that enables businesses to automate custom
 - **AI-Powered Conversations**: Natural language conversations powered by Claude (Anthropic)
 - **Inventory Management**: Real-time product catalog with stock tracking
 - **Order Processing**: Complete order lifecycle from inquiry to delivery
-- **Payment Integration**: Secure payment processing with Stripe and Paystack (Ghana)
+- **Payment Integration**: Secure payment processing with Paystack (supports cards, mobile money, bank transfers)
 - **Chat History**: Persistent conversation history and context management
 - **Admin Dashboard**: Comprehensive web interface for managing everything
 
@@ -30,8 +30,7 @@ A complete WhatsApp AI chatbot system that enables businesses to automate custom
 - **Redis** - Session and cache management
 - **Anthropic Claude** - AI conversation engine
 - **WhatsApp Business API** - Direct Meta/Facebook integration
-- **Stripe** - Payment processing (International)
-- **Paystack** - Payment processing (Ghana, Nigeria, Kenya, South Africa)
+- **Paystack** - Payment processing (Ghana, Nigeria, Kenya, South Africa + International)
 
 ### Frontend
 - **Next.js 15** - React framework
@@ -74,8 +73,7 @@ Before you begin, ensure you have:
 3. **Redis** (v6 or higher)
 4. **Meta Business Account** with WhatsApp Business API access
 5. **Anthropic API Key** (Claude)
-6. **Stripe Account** (for international payments)
-7. **Paystack Account** (for Ghana/Africa payments - optional)
+6. **Paystack Account** (for payment processing)
 
 ## Installation
 
@@ -151,11 +149,7 @@ WHATSAPP_VERIFY_TOKEN=your_custom_verify_token
 ANTHROPIC_API_KEY=your_anthropic_api_key
 AI_MODEL=claude-3-5-sonnet-20241022
 
-# Stripe (International Payments)
-STRIPE_SECRET_KEY=your_stripe_secret_key
-STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
-
-# Paystack (Ghana/Africa Payments - Optional)
+# Paystack (Payment Gateway)
 PAYSTACK_SECRET_KEY=your_paystack_secret_key
 PAYSTACK_PUBLIC_KEY=your_paystack_public_key
 
@@ -287,9 +281,9 @@ For production:
 3. Request increased rate limits if needed
 4. Set up proper error monitoring
 
-## Setting up Paystack (For Ghana & African Markets)
+## Setting up Paystack Payment Gateway
 
-The system automatically detects Ghanaian phone numbers (+233 or 0-prefixed) and uses Paystack for payment processing.
+Paystack is the payment gateway used for all transactions in the system.
 
 ### 1. Create a Paystack Account
 
@@ -312,20 +306,20 @@ The system automatically detects Ghanaian phone numbers (+233 or 0-prefixed) and
 
 ### 4. Supported Countries & Currencies
 
-Paystack supports:
-- **Ghana** (GHS)
-- **Nigeria** (NGN)
-- **Kenya** (KES)
-- **South Africa** (ZAR)
-- International cards (USD, EUR, GBP)
+Paystack supports payments from:
+- **Ghana** (GHS) - Mobile Money, Cards, Bank Transfer, USSD
+- **Nigeria** (NGN) - Cards, Bank Transfer, USSD
+- **Kenya** (KES) - Mobile Money (M-Pesa), Cards
+- **South Africa** (ZAR) - Cards, EFT
+- **International** - Visa, Mastercard (USD, EUR, GBP)
 
-### 5. Payment Detection Logic
+### 5. Payment Methods
 
-The system automatically:
-- Detects customer location based on phone number
-- Uses **Paystack** for +233 (Ghana) numbers
-- Uses **Stripe** for all other international numbers
-- Supports mobile money, cards, bank transfers, and USSD
+Customers can pay using:
+- **Credit/Debit Cards** - Visa, Mastercard, Verve
+- **Mobile Money** - MTN, Vodafone, AirtelTigo (Ghana), M-Pesa (Kenya)
+- **Bank Transfer** - Direct bank account transfer
+- **USSD** - USSD banking codes
 
 ## API Documentation
 
