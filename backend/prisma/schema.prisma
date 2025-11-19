@@ -77,7 +77,6 @@ model Message {
   content        String
   messageType    MessageType  @default(TEXT)
   metadata       Json?
-  twilioSid      String?      @unique
   createdAt      DateTime     @default(now())
 
   @@index([conversationId, createdAt])
@@ -97,6 +96,7 @@ model Order {
   shippingAddress Json?
   trackingNumber  String?
   notes           String?
+  metadata        Json?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
   items           OrderItem[]

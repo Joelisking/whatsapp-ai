@@ -8,7 +8,7 @@ A complete WhatsApp AI chatbot system that enables businesses to automate custom
 - **AI-Powered Conversations**: Natural language conversations powered by Claude (Anthropic)
 - **Inventory Management**: Real-time product catalog with stock tracking
 - **Order Processing**: Complete order lifecycle from inquiry to delivery
-- **Payment Integration**: Secure payment processing with Stripe
+- **Payment Integration**: Secure payment processing with Stripe and Paystack (Ghana)
 - **Chat History**: Persistent conversation history and context management
 - **Admin Dashboard**: Comprehensive web interface for managing everything
 
@@ -29,8 +29,9 @@ A complete WhatsApp AI chatbot system that enables businesses to automate custom
 - **PostgreSQL** - Primary database
 - **Redis** - Session and cache management
 - **Anthropic Claude** - AI conversation engine
-- **Twilio** - WhatsApp Business API
-- **Stripe** - Payment processing
+- **WhatsApp Business API** - Direct Meta/Facebook integration
+- **Stripe** - Payment processing (International)
+- **Paystack** - Payment processing (Ghana, Nigeria, Kenya, South Africa)
 
 ### Frontend
 - **Next.js 15** - React framework
@@ -71,9 +72,10 @@ Before you begin, ensure you have:
 1. **Node.js** (v18 or higher)
 2. **PostgreSQL** (v14 or higher)
 3. **Redis** (v6 or higher)
-4. **Twilio Account** with WhatsApp Business API access
+4. **Meta Business Account** with WhatsApp Business API access
 5. **Anthropic API Key** (Claude)
-6. **Stripe Account** (for payments)
+6. **Stripe Account** (for international payments)
+7. **Paystack Account** (for Ghana/Africa payments - optional)
 
 ## Installation
 
@@ -137,18 +139,25 @@ DATABASE_URL=postgresql://user:password@localhost:5432/whatsapp_ai
 # Redis
 REDIS_URL=redis://localhost:6379
 
-# WhatsApp (Twilio)
-TWILIO_ACCOUNT_SID=your_twilio_account_sid
-TWILIO_AUTH_TOKEN=your_twilio_auth_token
-TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+# WhatsApp Business API (Meta/Facebook)
+WHATSAPP_ACCESS_TOKEN=your_whatsapp_access_token
+WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
+WHATSAPP_BUSINESS_ACCOUNT_ID=your_business_account_id
+WHATSAPP_API_VERSION=v21.0
+WHATSAPP_APP_SECRET=your_app_secret
+WHATSAPP_VERIFY_TOKEN=your_custom_verify_token
 
 # AI (Claude/Anthropic)
 ANTHROPIC_API_KEY=your_anthropic_api_key
 AI_MODEL=claude-3-5-sonnet-20241022
 
-# Stripe
+# Stripe (International Payments)
 STRIPE_SECRET_KEY=your_stripe_secret_key
 STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
+
+# Paystack (Ghana/Africa Payments - Optional)
+PAYSTACK_SECRET_KEY=your_paystack_secret_key
+PAYSTACK_PUBLIC_KEY=your_paystack_public_key
 
 # JWT
 JWT_SECRET=your_super_secret_jwt_key_change_this_in_production
@@ -223,44 +232,100 @@ npm run build
 npm start
 ```
 
-## Setting up WhatsApp with Twilio
+## Setting up WhatsApp Business API
 
-### 1. Create a Twilio Account
+### 1. Create a Meta Business Account
 
-1. Sign up at [Twilio](https://www.twilio.com/try-twilio)
-2. Verify your phone number
-3. Navigate to WhatsApp section
+1. Go to [Meta for Developers](https://developers.facebook.com/)
+2. Create a new app or use existing one
+3. Add "WhatsApp" product to your app
+4. Complete business verification
 
-### 2. Set up WhatsApp Sandbox (Development)
+### 2. Set up WhatsApp Business Account
 
-For testing, use Twilio's WhatsApp Sandbox:
+1. In your Meta App Dashboard, go to WhatsApp → Getting Started
+2. Create or connect a WhatsApp Business Account
+3. Add a phone number (you'll need a phone number not currently used on WhatsApp)
+4. Verify the phone number via SMS
 
-1. Go to Twilio Console → Messaging → Try it out → Send a WhatsApp message
-2. Follow instructions to join the sandbox
-3. Send "join [sandbox-keyword]" to the provided number
+### 3. Get Your Credentials
 
-### 3. Configure Webhook
+From the WhatsApp → Getting Started page, copy:
+- **Phone Number ID**: Found under "Phone number" section
+- **WhatsApp Business Account ID**: In the top of the page
+- **Access Token**: Generate a permanent token (Settings → System Users)
+- **App Secret**: Found in App Settings → Basic
 
-Set your webhook URL in Twilio Console:
+### 4. Configure Webhook
 
-```
-https://your-domain.com/api/webhook/whatsapp
-```
+1. Go to WhatsApp → Configuration
+2. Click "Edit" next to "Webhook"
+3. Set callback URL: `https://your-domain.com/api/webhook/whatsapp`
+4. Set verify token: (create a random string, use same in .env as `WHATSAPP_VERIFY_TOKEN`)
+5. Subscribe to webhook fields: `messages`
 
-For local development, use ngrok:
+**For local development**, use ngrok:
 
 ```bash
 ngrok http 3001
 ```
 
-Then set webhook to: `https://your-ngrok-url.ngrok.io/api/webhook/whatsapp`
+Use the ngrok URL: `https://your-ngrok-url.ngrok.io/api/webhook/whatsapp`
 
-### 4. Production WhatsApp Setup
+### 5. Test Your Setup
 
-For production, you'll need:
-1. A Twilio-approved WhatsApp Business Profile
-2. A registered Facebook Business Manager account
-3. Complete Twilio's WhatsApp approval process
+Send a message to your WhatsApp Business number and check:
+1. Webhook receives the message
+2. AI responds automatically
+3. Messages appear in admin dashboard
+
+### 6. Production Considerations
+
+For production:
+1. Complete Meta Business Verification
+2. Add payment method for usage beyond free tier
+3. Request increased rate limits if needed
+4. Set up proper error monitoring
+
+## Setting up Paystack (For Ghana & African Markets)
+
+The system automatically detects Ghanaian phone numbers (+233 or 0-prefixed) and uses Paystack for payment processing.
+
+### 1. Create a Paystack Account
+
+1. Sign up at [Paystack](https://paystack.com/)
+2. Complete business verification
+3. Add your bank account for settlements
+
+### 2. Get API Keys
+
+1. Go to Settings → API Keys & Webhooks
+2. Copy your:
+   - **Secret Key** (starts with `sk_`)
+   - **Public Key** (starts with `pk_`)
+
+### 3. Configure Webhooks
+
+1. In Paystack Dashboard, go to Settings → API Keys & Webhooks
+2. Set webhook URL: `https://your-domain.com/api/webhook/paystack`
+3. Subscribe to events: `charge.success`
+
+### 4. Supported Countries & Currencies
+
+Paystack supports:
+- **Ghana** (GHS)
+- **Nigeria** (NGN)
+- **Kenya** (KES)
+- **South Africa** (ZAR)
+- International cards (USD, EUR, GBP)
+
+### 5. Payment Detection Logic
+
+The system automatically:
+- Detects customer location based on phone number
+- Uses **Paystack** for +233 (Ghana) numbers
+- Uses **Stripe** for all other international numbers
+- Supports mobile money, cards, bank transfers, and USSD
 
 ## API Documentation
 
