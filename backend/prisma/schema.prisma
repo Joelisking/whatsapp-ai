@@ -1,0 +1,166 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(ADMIN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Customer {
+  id           String         @id @default(uuid())
+  phoneNumber  String         @unique
+  name         String?
+  email        String?
+  language     String         @default("en")
+  metadata     Json?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  conversations Conversation[]
+  orders       Order[]
+
+  @@map("customers")
+}
+
+model Product {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  price       Float
+  currency    String      @default("USD")
+  stock       Int         @default(0)
+  category    String?
+  imageUrl    String?
+  metadata    Json?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  orderItems  OrderItem[]
+
+  @@map("products")
+}
+
+model Conversation {
+  id         String              @id @default(uuid())
+  customerId String
+  customer   Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  status     ConversationStatus  @default(ACTIVE)
+  assignedTo String?
+  context    Json?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  messages   Message[]
+
+  @@index([customerId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         MessageSender
+  content        String
+  messageType    MessageType  @default(TEXT)
+  metadata       Json?
+  twilioSid      String?      @unique
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model Order {
+  id              String      @id @default(uuid())
+  customerId      String
+  customer        Customer    @relation(fields: [customerId], references: [id])
+  orderNumber     String      @unique
+  status          OrderStatus @default(PENDING)
+  totalAmount     Float
+  currency        String      @default("USD")
+  paymentIntentId String?
+  paymentStatus   PaymentStatus @default(PENDING)
+  shippingAddress Json?
+  trackingNumber  String?
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           OrderItem[]
+
+  @@index([customerId])
+  @@index([orderNumber])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  price     Float
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+enum UserRole {
+  ADMIN
+  AGENT
+}
+
+enum ConversationStatus {
+  ACTIVE
+  WAITING_FOR_AGENT
+  WITH_AGENT
+  RESOLVED
+  CLOSED
+}
+
+enum MessageSender {
+  CUSTOMER
+  AI
+  AGENT
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  DOCUMENT
+  LOCATION
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}

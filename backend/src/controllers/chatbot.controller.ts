@@ -1,0 +1,285 @@
+import { Request, Response } from 'express';
+import { prisma } from '../config/database';
+import { generateAIResponse, detectIntent, extractProductsFromMessage } from '../services/ai.service';
+import { sendWhatsAppMessage, sendPaymentLink, sendOrderConfirmation } from '../services/whatsapp.service';
+import { createPaymentLink } from '../services/stripe.service';
+import { saveConversationContext, getConversationContext } from '../services/redis.service';
+import { v4 as uuidv4 } from 'uuid';
+
+export async function handleIncomingMessage(req: Request, res: Response) {
+  try {
+    const { From, Body, MessageSid, ProfileName } = req.body;
+
+    // Extract phone number (remove 'whatsapp:' prefix)
+    const phoneNumber = From.replace('whatsapp:', '');
+
+    // Find or create customer
+    let customer = await prisma.customer.findUnique({
+      where: { phoneNumber },
+    });
+
+    if (!customer) {
+      customer = await prisma.customer.create({
+        data: {
+          phoneNumber,
+          name: ProfileName || undefined,
+        },
+      });
+    }
+
+    // Find or create active conversation
+    let conversation = await prisma.conversation.findFirst({
+      where: {
+        customerId: customer.id,
+        status: { in: ['ACTIVE', 'WAITING_FOR_AGENT'] },
+      },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        },
+      },
+    });
+
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          customerId: customer.id,
+          status: 'ACTIVE',
+        },
+        include: {
+          messages: true,
+        },
+      });
+    }
+
+    // Save incoming message
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        sender: 'CUSTOMER',
+        content: Body,
+        twilioSid: MessageSid,
+      },
+    });
+
+    // Check if conversation is with agent
+    if (conversation.status === 'WITH_AGENT') {
+      // Don't auto-respond, agent will handle
+      return res.status(200).send('OK');
+    }
+
+    // Detect intent
+    const intent = await detectIntent(Body);
+
+    // Get conversation context from Redis
+    let context = await getConversationContext(conversation.id);
+    if (!context) {
+      context = {
+        conversationId: conversation.id,
+        customerName: customer.name,
+        previousMessages: [],
+        cartItems: [],
+      };
+    }
+
+    // Build message history
+    const previousMessages = conversation.messages
+      .reverse()
+      .map(msg => ({
+        role: msg.sender === 'CUSTOMER' ? 'user' as const : 'assistant' as const,
+        content: msg.content,
+      }));
+
+    context.previousMessages = previousMessages;
+    context.currentIntent = intent;
+
+    // Handle special intents
+    if (intent === 'HELP' && Body.toLowerCase().includes('agent')) {
+      await handleAgentHandoff(conversation.id, phoneNumber);
+      return res.status(200).send('OK');
+    }
+
+    // Check if message mentions products
+    const mentionedProducts = await extractProductsFromMessage(Body);
+
+    // Handle purchase intent
+    if (intent === 'PURCHASE' && mentionedProducts.length > 0) {
+      await handlePurchaseIntent(conversation.id, phoneNumber, mentionedProducts, Body, context);
+      return res.status(200).send('OK');
+    }
+
+    // Generate AI response
+    const aiResponse = await generateAIResponse(Body, context);
+
+    // Save AI response
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        sender: 'AI',
+        content: aiResponse,
+      },
+    });
+
+    // Send WhatsApp response
+    await sendWhatsAppMessage({
+      to: phoneNumber,
+      body: aiResponse,
+    });
+
+    // Update context in Redis
+    await saveConversationContext(conversation.id, {
+      ...context,
+      previousMessages: [
+        ...previousMessages,
+        { role: 'user', content: Body },
+        { role: 'assistant', content: aiResponse },
+      ].slice(-10), // Keep last 10 messages
+    });
+
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Error handling incoming message:', error);
+    res.status(500).send('Error processing message');
+  }
+}
+
+async function handleAgentHandoff(conversationId: string, phoneNumber: string) {
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: { status: 'WAITING_FOR_AGENT' },
+  });
+
+  await sendWhatsAppMessage({
+    to: phoneNumber,
+    body: '👋 Connecting you with our team...\n\nAn agent will be with you shortly. Thank you for your patience!',
+  });
+
+  // Save system message
+  await prisma.message.create({
+    data: {
+      conversationId,
+      sender: 'SYSTEM',
+      content: 'Customer requested agent assistance',
+    },
+  });
+}
+
+async function handlePurchaseIntent(
+  conversationId: string,
+  phoneNumber: string,
+  products: any[],
+  userMessage: string,
+  context: any
+) {
+  try {
+    // Extract quantity from message (default to 1)
+    const quantityMatch = userMessage.match(/(\d+)/);
+    const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+
+    const product = products[0]; // Take first mentioned product
+
+    // Check stock
+    if (product.stock < quantity) {
+      await sendWhatsAppMessage({
+        to: phoneNumber,
+        body: `Sorry, we only have ${product.stock} units of ${product.name} in stock. Would you like to order ${product.stock} instead?`,
+      });
+      return;
+    }
+
+    // Create order
+    const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    const totalAmount = product.price * quantity;
+
+    const customer = await prisma.customer.findUnique({
+      where: { phoneNumber },
+    });
+
+    const order = await prisma.order.create({
+      data: {
+        customerId: customer!.id,
+        orderNumber,
+        status: 'PENDING',
+        totalAmount,
+        currency: product.currency,
+        items: {
+          create: [
+            {
+              productId: product.id,
+              quantity,
+              price: product.price,
+            },
+          ],
+        },
+      },
+      include: {
+        items: {
+          include: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    // Create payment link
+    const paymentLink = await createPaymentLink({
+      amount: totalAmount,
+      currency: product.currency,
+      customerPhone: phoneNumber,
+      orderId: order.id,
+      metadata: {
+        orderNumber,
+      },
+    });
+
+    // Update order with payment intent
+    await prisma.order.update({
+      where: { id: order.id },
+      data: { paymentIntentId: paymentLink.paymentLinkId },
+    });
+
+    // Send payment link via WhatsApp
+    await sendPaymentLink(phoneNumber, paymentLink.url, totalAmount, product.currency);
+
+    // Save AI message
+    await prisma.message.create({
+      data: {
+        conversationId,
+        sender: 'AI',
+        content: `Payment link sent for ${quantity}x ${product.name}`,
+      },
+    });
+
+    // Update context
+    context.cartItems = [
+      {
+        productId: product.id,
+        productName: product.name,
+        quantity,
+        price: product.price,
+      },
+    ];
+    await saveConversationContext(conversationId, context);
+  } catch (error) {
+    console.error('Purchase intent error:', error);
+    await sendWhatsAppMessage({
+      to: phoneNumber,
+      body: 'Sorry, there was an error processing your order. Please try again or contact our support team.',
+    });
+  }
+}
+
+export async function handleWebhookStatus(req: Request, res: Response) {
+  try {
+    const { MessageStatus, MessageSid } = req.body;
+
+    // Update message status in database if needed
+    console.log(`Message ${MessageSid} status: ${MessageStatus}`);
+
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Error handling webhook status:', error);
+    res.status(500).send('Error');
+  }
+}
