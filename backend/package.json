@@ -21,7 +21,7 @@
     "redis": "^4.7.0",
     "express-rate-limit": "^7.4.0",
     "stripe": "^16.8.0",
-    "twilio": "^5.2.2",
+    "axios": "^1.7.7",
     "uuid": "^10.0.0",
     "zod": "^3.23.8",
     "bcrypt": "^5.1.1",

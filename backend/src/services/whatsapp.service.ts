@@ -1,7 +1,6 @@
-import twilio from 'twilio';
+import axios from 'axios';
+import crypto from 'crypto';
 import { config } from '../config';
-
-const twilioClient = twilio(config.twilio.accountSid, config.twilio.authToken);
 
 export interface WhatsAppMessage {
   to: string; // Phone number with country code (e.g., +1234567890)
@@ -9,31 +8,50 @@ export interface WhatsAppMessage {
   mediaUrl?: string;
 }
 
+// WhatsApp Business API client
+const whatsappClient = axios.create({
+  baseURL: `https://graph.facebook.com/${config.whatsapp.apiVersion}/${config.whatsapp.phoneNumberId}`,
+  headers: {
+    'Authorization': `Bearer ${config.whatsapp.accessToken}`,
+    'Content-Type': 'application/json',
+  },
+});
+
 export async function sendWhatsAppMessage(message: WhatsAppMessage) {
   try {
-    const formattedTo = message.to.startsWith('whatsapp:')
-      ? message.to
-      : `whatsapp:${message.to}`;
+    // Remove any 'whatsapp:' prefix and format phone number
+    const phoneNumber = message.to.replace('whatsapp:', '').replace('+', '');
 
-    const messageData: any = {
-      from: config.twilio.whatsappNumber,
-      to: formattedTo,
-      body: message.body,
+    const payload: any = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phoneNumber,
+      type: 'text',
+      text: {
+        preview_url: true,
+        body: message.body,
+      },
     };
 
+    // If media is provided, send as image message
     if (message.mediaUrl) {
-      messageData.mediaUrl = [message.mediaUrl];
+      payload.type = 'image';
+      payload.image = {
+        link: message.mediaUrl,
+        caption: message.body,
+      };
+      delete payload.text;
     }
 
-    const result = await twilioClient.messages.create(messageData);
+    const response = await whatsappClient.post('/messages', payload);
 
     return {
       success: true,
-      messageId: result.sid,
-      status: result.status,
+      messageId: response.data.messages[0].id,
+      status: 'sent',
     };
-  } catch (error) {
-    console.error('WhatsApp send error:', error);
+  } catch (error: any) {
+    console.error('WhatsApp send error:', error.response?.data || error.message);
     throw new Error('Failed to send WhatsApp message');
   }
 }
@@ -61,8 +79,9 @@ export async function sendOrderConfirmation(to: string, order: any) {
   });
 }
 
-export async function sendPaymentLink(to: string, paymentUrl: string, amount: number, currency: string) {
-  const message = `💳 *Complete Your Payment*\n\nAmount: ${currency} ${amount}\n\nClick the link below to pay securely:\n${paymentUrl}\n\nThis link expires in 24 hours.`;
+export async function sendPaymentLink(to: string, paymentUrl: string, amount: number, currency: string, provider: 'stripe' | 'paystack' = 'stripe') {
+  const providerName = provider === 'paystack' ? 'Paystack' : 'Stripe';
+  const message = `💳 *Complete Your Payment*\n\nAmount: ${currency} ${amount}\nPayment Provider: ${providerName}\n\nClick the link below to pay securely:\n${paymentUrl}\n\nThis link expires in 24 hours.`;
 
   await sendWhatsAppMessage({
     to,
@@ -92,8 +111,59 @@ export async function notifyAgentHandoff(to: string, estimatedWaitTime?: string)
   });
 }
 
-// Webhook validation
-export function validateWebhookSignature(signature: string, url: string, params: any): boolean {
-  if (!config.twilio.authToken) return false;
-  return twilio.validateRequest(config.twilio.authToken, signature, url, params);
+// Webhook signature validation for WhatsApp Business API
+export function validateWebhookSignature(signature: string, body: string): boolean {
+  if (!config.whatsapp.appSecret) {
+    console.warn('WhatsApp app secret not configured');
+    return false;
+  }
+
+  try {
+    const expectedSignature = crypto
+      .createHmac('sha256', config.whatsapp.appSecret)
+      .update(body)
+      .digest('hex');
+
+    return signature === `sha256=${expectedSignature}`;
+  } catch (error) {
+    console.error('Webhook validation error:', error);
+    return false;
+  }
+}
+
+// Verify webhook endpoint (required by WhatsApp)
+export function verifyWebhook(mode: string, token: string, challenge: string): string | null {
+  if (mode === 'subscribe' && token === config.whatsapp.verifyToken) {
+    return challenge;
+  }
+  return null;
+}
+
+// Parse incoming webhook message
+export function parseWebhookMessage(webhookData: any): {
+  from: string;
+  messageId: string;
+  body: string;
+  name?: string;
+  type: string;
+} | null {
+  try {
+    const entry = webhookData.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
+    const message = value?.messages?.[0];
+
+    if (!message) return null;
+
+    return {
+      from: message.from,
+      messageId: message.id,
+      body: message.text?.body || message.image?.caption || '',
+      name: value?.contacts?.[0]?.profile?.name,
+      type: message.type,
+    };
+  } catch (error) {
+    console.error('Error parsing webhook message:', error);
+    return null;
+  }
 }

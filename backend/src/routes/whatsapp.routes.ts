@@ -3,10 +3,11 @@ import { handleIncomingMessage, handleWebhookStatus } from '../controllers/chatb
 
 const router = express.Router();
 
-// Twilio webhook for incoming messages
-router.post('/', handleIncomingMessage);
+// WhatsApp Business API webhook verification (GET) and message handling (POST)
+router.get('/', handleIncomingMessage); // Webhook verification
+router.post('/', handleIncomingMessage); // Incoming messages
 
-// Twilio webhook for message status updates
+// WhatsApp message status updates
 router.post('/status', handleWebhookStatus);
 
 export default router;

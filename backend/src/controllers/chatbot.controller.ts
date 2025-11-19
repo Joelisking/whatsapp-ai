@@ -1,17 +1,37 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { generateAIResponse, detectIntent, extractProductsFromMessage } from '../services/ai.service';
-import { sendWhatsAppMessage, sendPaymentLink, sendOrderConfirmation } from '../services/whatsapp.service';
+import { sendWhatsAppMessage, sendPaymentLink, sendOrderConfirmation, parseWebhookMessage, verifyWebhook } from '../services/whatsapp.service';
 import { createPaymentLink } from '../services/stripe.service';
+import { initializePayment, isGhanaianCustomer, normalizeCurrency } from '../services/paystack.service';
 import { saveConversationContext, getConversationContext } from '../services/redis.service';
-import { v4 as uuidv4 } from 'uuid';
 
 export async function handleIncomingMessage(req: Request, res: Response) {
   try {
-    const { From, Body, MessageSid, ProfileName } = req.body;
+    // Handle WhatsApp webhook verification
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
 
-    // Extract phone number (remove 'whatsapp:' prefix)
-    const phoneNumber = From.replace('whatsapp:', '');
+    if (mode && token) {
+      const verifiedChallenge = verifyWebhook(mode as string, token as string, challenge as string);
+      if (verifiedChallenge) {
+        return res.status(200).send(verifiedChallenge);
+      }
+      return res.status(403).send('Forbidden');
+    }
+
+    // Parse incoming message
+    const messageData = parseWebhookMessage(req.body);
+
+    if (!messageData) {
+      return res.status(200).send('OK');
+    }
+
+    const { from, messageId, body, name } = messageData;
+
+    // Format phone number with + prefix
+    const phoneNumber = from.startsWith('+') ? from : `+${from}`;
 
     // Find or create customer
     let customer = await prisma.customer.findUnique({
@@ -22,7 +42,7 @@ export async function handleIncomingMessage(req: Request, res: Response) {
       customer = await prisma.customer.create({
         data: {
           phoneNumber,
-          name: ProfileName || undefined,
+          name: name || undefined,
         },
       });
     }
@@ -58,8 +78,8 @@ export async function handleIncomingMessage(req: Request, res: Response) {
       data: {
         conversationId: conversation.id,
         sender: 'CUSTOMER',
-        content: Body,
-        twilioSid: MessageSid,
+        content: body,
+        metadata: { whatsappMessageId: messageId },
       },
     });
 
@@ -70,7 +90,7 @@ export async function handleIncomingMessage(req: Request, res: Response) {
     }
 
     // Detect intent
-    const intent = await detectIntent(Body);
+    const intent = await detectIntent(body);
 
     // Get conversation context from Redis
     let context = await getConversationContext(conversation.id);
@@ -95,22 +115,22 @@ export async function handleIncomingMessage(req: Request, res: Response) {
     context.currentIntent = intent;
 
     // Handle special intents
-    if (intent === 'HELP' && Body.toLowerCase().includes('agent')) {
+    if (intent === 'HELP' && body.toLowerCase().includes('agent')) {
       await handleAgentHandoff(conversation.id, phoneNumber);
       return res.status(200).send('OK');
     }
 
     // Check if message mentions products
-    const mentionedProducts = await extractProductsFromMessage(Body);
+    const mentionedProducts = await extractProductsFromMessage(body);
 
     // Handle purchase intent
     if (intent === 'PURCHASE' && mentionedProducts.length > 0) {
-      await handlePurchaseIntent(conversation.id, phoneNumber, mentionedProducts, Body, context);
+      await handlePurchaseIntent(conversation.id, phoneNumber, mentionedProducts, body, context);
       return res.status(200).send('OK');
     }
 
     // Generate AI response
-    const aiResponse = await generateAIResponse(Body, context);
+    const aiResponse = await generateAIResponse(body, context);
 
     // Save AI response
     await prisma.message.create({
@@ -132,7 +152,7 @@ export async function handleIncomingMessage(req: Request, res: Response) {
       ...context,
       previousMessages: [
         ...previousMessages,
-        { role: 'user', content: Body },
+        { role: 'user', content: body },
         { role: 'assistant', content: aiResponse },
       ].slice(-10), // Keep last 10 messages
     });
@@ -222,32 +242,67 @@ async function handlePurchaseIntent(
       },
     });
 
-    // Create payment link
-    const paymentLink = await createPaymentLink({
-      amount: totalAmount,
-      currency: product.currency,
-      customerPhone: phoneNumber,
-      orderId: order.id,
-      metadata: {
-        orderNumber,
+    // Detect payment provider based on customer location
+    const usePaystack = isGhanaianCustomer(phoneNumber);
+    const paymentProvider = usePaystack ? 'paystack' : 'stripe';
+
+    let paymentUrl: string;
+    let paymentReference: string;
+
+    if (usePaystack) {
+      // Use Paystack for Ghanaian customers
+      const currency = normalizeCurrency(product.currency);
+      const payment = await initializePayment({
+        amount: totalAmount,
+        currency,
+        customerEmail: customer!.email || `customer-${customer!.id}@placeholder.com`,
+        customerPhone: phoneNumber,
+        orderId: order.id,
+        metadata: {
+          orderNumber,
+          paymentProvider: 'paystack',
+        },
+      });
+
+      paymentUrl = payment.authorizationUrl;
+      paymentReference = payment.reference;
+    } else {
+      // Use Stripe for international customers
+      const payment = await createPaymentLink({
+        amount: totalAmount,
+        currency: product.currency,
+        customerPhone: phoneNumber,
+        orderId: order.id,
+        metadata: {
+          orderNumber,
+          paymentProvider: 'stripe',
+        },
+      });
+
+      paymentUrl = payment.url;
+      paymentReference = payment.paymentLinkId;
+    }
+
+    // Update order with payment reference
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        paymentIntentId: paymentReference,
+        metadata: {
+          paymentProvider,
+        },
       },
     });
 
-    // Update order with payment intent
-    await prisma.order.update({
-      where: { id: order.id },
-      data: { paymentIntentId: paymentLink.paymentLinkId },
-    });
-
     // Send payment link via WhatsApp
-    await sendPaymentLink(phoneNumber, paymentLink.url, totalAmount, product.currency);
+    await sendPaymentLink(phoneNumber, paymentUrl, totalAmount, product.currency, paymentProvider);
 
     // Save AI message
     await prisma.message.create({
       data: {
         conversationId,
         sender: 'AI',
-        content: `Payment link sent for ${quantity}x ${product.name}`,
+        content: `Payment link sent for ${quantity}x ${product.name} via ${paymentProvider === 'paystack' ? 'Paystack' : 'Stripe'}`,
       },
     });
 
@@ -272,10 +327,9 @@ async function handlePurchaseIntent(
 
 export async function handleWebhookStatus(req: Request, res: Response) {
   try {
-    const { MessageStatus, MessageSid } = req.body;
-
-    // Update message status in database if needed
-    console.log(`Message ${MessageSid} status: ${MessageStatus}`);
+    // Handle WhatsApp message status updates
+    const statusData = req.body;
+    console.log('WhatsApp status update:', JSON.stringify(statusData, null, 2));
 
     res.status(200).send('OK');
   } catch (error) {
