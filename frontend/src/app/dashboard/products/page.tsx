@@ -43,21 +43,36 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import ImageUpload from '@/components/ImageUpload';
 
 const productSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
   description: z.string().optional(),
-  price: z.string().refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, {
-    message: 'Price must be a positive number',
-  }),
+  price: z
+    .string()
+    .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, {
+      message: 'Price must be a positive number',
+    }),
   currency: z.enum(['USD', 'GHS', 'NGN', 'KES', 'ZAR']),
-  stock: z.string().refine((val) => !isNaN(parseInt(val)) && parseInt(val) >= 0, {
-    message: 'Stock must be a non-negative number',
-  }),
+  stock: z
+    .string()
+    .refine((val) => !isNaN(parseInt(val)) && parseInt(val) >= 0, {
+      message: 'Stock must be a non-negative number',
+    }),
   category: z.string().min(1, 'Category is required'),
-  imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
+  imageUrl: z
+    .string()
+    .url('Must be a valid URL')
+    .optional()
+    .or(z.literal('')),
   isActive: z.boolean(),
 });
 
@@ -85,7 +100,8 @@ export default function ProductsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this product?')) return;
+    if (!confirm('Are you sure you want to delete this product?'))
+      return;
 
     try {
       await productsAPI.delete(id);
@@ -116,8 +132,12 @@ export default function ProductsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Products</h1>
-            <p className="text-muted-foreground">Manage your product inventory</p>
+            <h1 className="text-3xl font-bold tracking-tight">
+              Products
+            </h1>
+            <p className="text-muted-foreground">
+              Manage your product inventory
+            </p>
           </div>
           <Button onClick={() => openModal()}>
             <Plus className="w-4 h-4 mr-2" />
@@ -129,7 +149,9 @@ export default function ProductsPage() {
           <CardHeader>
             <CardTitle>All Products</CardTitle>
             <CardDescription>
-              {products.length} {products.length === 1 ? 'product' : 'products'} in inventory
+              {products.length}{' '}
+              {products.length === 1 ? 'product' : 'products'} in
+              inventory
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -142,14 +164,19 @@ export default function ProductsPage() {
                     <TableHead>Price</TableHead>
                     <TableHead>Stock</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-right">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {products.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
-                        No products found. Create your first product to get started.
+                      <TableCell
+                        colSpan={6}
+                        className="text-center h-24 text-muted-foreground">
+                        No products found. Create your first product
+                        to get started.
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -161,14 +188,19 @@ export default function ProductsPage() {
                               <Package className="h-5 w-5 text-muted-foreground" />
                             </div>
                             <div>
-                              <div className="font-medium">{product.name}</div>
+                              <div className="font-medium">
+                                {product.name}
+                              </div>
                               <div className="text-sm text-muted-foreground line-clamp-1">
-                                {product.description || 'No description'}
+                                {product.description ||
+                                  'No description'}
                               </div>
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>{product.category || 'N/A'}</TableCell>
+                        <TableCell>
+                          {product.category || 'N/A'}
+                        </TableCell>
                         <TableCell className="font-medium">
                           {product.currency} {product.price}
                         </TableCell>
@@ -178,13 +210,17 @@ export default function ProductsPage() {
                               product.stock <= 10
                                 ? 'text-destructive font-medium'
                                 : 'text-foreground'
-                            }
-                          >
+                            }>
                             {product.stock}
                           </span>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={product.isActive ? 'default' : 'secondary'}>
+                          <Badge
+                            variant={
+                              product.isActive
+                                ? 'default'
+                                : 'secondary'
+                            }>
                             {product.isActive ? 'Active' : 'Inactive'}
                           </Badge>
                         </TableCell>
@@ -193,16 +229,14 @@ export default function ProductsPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => openModal(product)}
-                            >
+                              onClick={() => openModal(product)}>
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleDelete(product.id)}
-                              className="text-destructive hover:text-destructive"
-                            >
+                              className="text-destructive hover:text-destructive">
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -294,9 +328,11 @@ function ProductModal({ product, open, onClose, onSuccess }: any) {
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent>
         <DialogHeader>
-          <DialogTitle>{product ? 'Edit Product' : 'Add New Product'}</DialogTitle>
+          <DialogTitle>
+            {product ? 'Edit Product' : 'Add New Product'}
+          </DialogTitle>
           <DialogDescription>
             {product
               ? 'Update product details and inventory'
@@ -304,7 +340,9 @@ function ProductModal({ product, open, onClose, onSuccess }: any) {
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-4">
             <FormField
               control={form.control}
               name="name"
@@ -343,7 +381,12 @@ function ProductModal({ product, open, onClose, onSuccess }: any) {
                   <FormItem>
                     <FormLabel>Price</FormLabel>
                     <FormControl>
-                      <Input type="number" step="0.01" placeholder="99.99" {...field} />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="99.99"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -355,7 +398,9 @@ function ProductModal({ product, open, onClose, onSuccess }: any) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Currency</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select currency" />
@@ -382,7 +427,11 @@ function ProductModal({ product, open, onClose, onSuccess }: any) {
                   <FormItem>
                     <FormLabel>Stock Quantity</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="100" {...field} />
+                      <Input
+                        type="number"
+                        placeholder="100"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -407,9 +456,14 @@ function ProductModal({ product, open, onClose, onSuccess }: any) {
               name="imageUrl"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Image URL (optional)</FormLabel>
+                  <FormLabel>Product Image (optional)</FormLabel>
                   <FormControl>
-                    <Input placeholder="https://..." {...field} />
+                    <ImageUpload
+                      value={field.value}
+                      onChange={field.onChange}
+                      onRemove={() => field.onChange('')}
+                      disabled={form.formState.isSubmitting}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -427,17 +481,29 @@ function ProductModal({ product, open, onClose, onSuccess }: any) {
                     </div>
                   </div>
                   <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
                   </FormControl>
                 </FormItem>
               )}
             />
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? 'Saving...' : product ? 'Update' : 'Create'}
+              <Button
+                type="submit"
+                disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting
+                  ? 'Saving...'
+                  : product
+                  ? 'Update'
+                  : 'Create'}
               </Button>
             </DialogFooter>
           </form>

@@ -84,3 +84,23 @@ export const conversationsAPI = {
 export const analyticsAPI = {
   get: (params?: any) => api.get('/analytics', { params }),
 };
+
+// Upload API
+export const uploadAPI = {
+  getProductImageUploadUrl: (fileName: string, fileType: string, fileSize: number) =>
+    api.post('/upload/product-image', { fileName, fileType, fileSize }),
+  uploadToS3: async (url: string, file: File) => {
+    // Upload directly to S3 using presigned URL
+    const response = await fetch(url, {
+      method: 'PUT',
+      body: file,
+      headers: {
+        'Content-Type': file.type,
+      },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to upload image to S3');
+    }
+    return response;
+  },
+};

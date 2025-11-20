@@ -26,7 +26,7 @@ export const config = {
 
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY || '',
-    model: process.env.AI_MODEL || 'claude-3-5-sonnet-20241022',
+    model: process.env.AI_MODEL || 'claude-3-5-sonnet-20240620',
   },
 
   paystack: {
@@ -42,5 +42,15 @@ export const config = {
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
+  },
+
+  aws: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+    region: process.env.AWS_REGION || 'us-east-1',
+    s3: {
+      bucket: process.env.AWS_S3_BUCKET || '',
+      productImagePrefix: 'products/',
+    },
   },
 };
