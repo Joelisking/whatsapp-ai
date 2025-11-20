@@ -17,6 +17,28 @@ const whatsappClient = axios.create({
   },
 });
 
+export async function sendTypingIndicator(to: string, action: 'typing' | 'stop_typing' = 'typing') {
+  try {
+    // Remove any 'whatsapp:' prefix and format phone number
+    const phoneNumber = to.replace('whatsapp:', '').replace('+', '');
+
+    await whatsappClient.post('/messages', {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: phoneNumber,
+      type: 'typing',
+      typing: {
+        action: action
+      }
+    });
+
+    console.log(`Typing indicator ${action} sent to ${phoneNumber}`);
+  } catch (error: any) {
+    console.error('Failed to send typing indicator:', error.response?.data || error.message);
+    // Don't throw error for typing indicators - they're not critical
+  }
+}
+
 export async function sendWhatsAppMessage(message: WhatsAppMessage) {
   try {
     // Remove any 'whatsapp:' prefix and format phone number

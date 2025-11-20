@@ -10,13 +10,15 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      UserRole @default(ADMIN)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String          @id @default(uuid())
+  email           String          @unique
+  password        String
+  name            String
+  phoneNumber     String?
+  role            UserRole        @default(ADMIN)
+  payoutFrequency PayoutFrequency @default(WEEKLY)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   @@map("users")
 }
@@ -163,4 +165,11 @@ enum PaymentStatus {
   SUCCEEDED
   FAILED
   REFUNDED
+}
+
+enum PayoutFrequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
 }

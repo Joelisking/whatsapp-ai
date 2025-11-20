@@ -11,6 +11,7 @@ import {
   Users,
   MessageSquare,
   BarChart3,
+  Settings,
   LogOut,
   Menu,
   X,
@@ -30,6 +31,11 @@ const navigation = [
     name: 'Analytics',
     href: '/dashboard/analytics',
     icon: BarChart3,
+  },
+  {
+    name: 'Settings',
+    href: '/dashboard/settings',
+    icon: Settings,
   },
 ];
 

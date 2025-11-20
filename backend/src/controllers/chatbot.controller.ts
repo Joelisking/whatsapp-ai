@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
-import { generateAIResponse, detectIntent, extractProductsFromMessage } from '../services/ai.service';
-import { sendWhatsAppMessage, sendPaymentLink, parseWebhookMessage, verifyWebhook } from '../services/whatsapp.service';
+import { generateAIResponse, detectIntent, extractProductsFromMessage, detectAIConfusion, analyzeConversationForHelp } from '../services/ai.service';
+import { sendWhatsAppMessage, sendPaymentLink, parseWebhookMessage, verifyWebhook, sendTypingIndicator } from '../services/whatsapp.service';
 import { initializePayment, normalizeCurrency } from '../services/paystack.service';
 import { saveConversationContext, getConversationContext } from '../services/redis.service';
+import { ownerNotificationService } from '../services/ownerNotification.service';
 
 export async function handleIncomingMessage(req: Request, res: Response) {
   try {
@@ -133,8 +134,27 @@ export async function handleIncomingMessage(req: Request, res: Response) {
       return res.status(200).send('OK');
     }
 
+    // Check if conversation shows signs customer needs help
+    const conversationAnalysis = analyzeConversationForHelp(previousMessages);
+    if (conversationAnalysis.needsHelp) {
+      console.log('🚨 Conversation analysis indicates customer needs help:', conversationAnalysis.reason);
+      await handleAIConfusionHandoff(conversation.id, phoneNumber, customer.name || 'Customer', body, conversationAnalysis.reason);
+      return res.status(200).send('OK');
+    }
+
+    // Show typing indicator while AI is thinking
+    await sendTypingIndicator(phoneNumber, 'typing');
+
     // Generate AI response
     const aiResponse = await generateAIResponse(body, context);
+
+    // Check if AI response indicates it needs help
+    const aiConfusion = detectAIConfusion(aiResponse);
+    if (aiConfusion.needsHelp) {
+      console.log('🤔 AI indicated it needs human help:', aiConfusion.reason);
+      await handleAIConfusionHandoff(conversation.id, phoneNumber, customer.name || 'Customer', body, aiConfusion.reason);
+      return res.status(200).send('OK');
+    }
 
     // Save AI response
     await prisma.message.create({
@@ -182,7 +202,7 @@ async function handleAgentHandoff(conversationId: string, phoneNumber: string) {
 
   await sendWhatsAppMessage({
     to: phoneNumber,
-    body: '👋 Connecting you with our team...\n\nAn agent will be with you shortly. Thank you for your patience!',
+    body: '👋 Eeii, let me connect you with my manager oo. They go help you better than me. Just hold on small! 🙏🏾',
   });
 
   // Save system message
@@ -193,6 +213,46 @@ async function handleAgentHandoff(conversationId: string, phoneNumber: string) {
       content: 'Customer requested agent assistance',
     },
   });
+}
+
+async function handleAIConfusionHandoff(
+  conversationId: string,
+  phoneNumber: string,
+  customerName: string,
+  lastMessage: string,
+  reason: string
+) {
+  // Update conversation status
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: { status: 'WAITING_FOR_AGENT' },
+  });
+
+  // Send friendly message to customer
+  await sendWhatsAppMessage({
+    to: phoneNumber,
+    body: '😊 Chale, let me connect you with someone who can help you better oo. They go reach you soon. No wahala! 🙏🏾',
+  });
+
+  // Save system message
+  await prisma.message.create({
+    data: {
+      conversationId,
+      sender: 'SYSTEM',
+      content: `AI handoff triggered: ${reason}`,
+    },
+  });
+
+  // Notify owner(s) on WhatsApp
+  await ownerNotificationService.notifyAINeedsHelp({
+    customerName,
+    customerPhone: phoneNumber,
+    conversationId,
+    lastMessage,
+    reason,
+  });
+
+  console.log(`✅ Owner notified about AI handoff for conversation ${conversationId}`);
 }
 
 async function handlePurchaseIntent(
@@ -288,6 +348,24 @@ async function handlePurchaseIntent(
         content: `Payment link sent for ${quantity}x ${product.name}`,
       },
     });
+
+    // Notify owner(s) about new order
+    await ownerNotificationService.notifyNewOrder({
+      orderNumber,
+      customerName: customer!.name || 'Customer',
+      customerPhone: phoneNumber,
+      items: [
+        {
+          productName: product.name,
+          quantity,
+          price: product.price,
+        },
+      ],
+      totalAmount,
+      currency,
+    });
+
+    console.log(`✅ Owner notified about new order ${orderNumber}`);
 
     // Update context
     context.cartItems = [

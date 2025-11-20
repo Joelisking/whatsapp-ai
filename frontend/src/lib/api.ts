@@ -43,6 +43,8 @@ export const authAPI = {
     api.post('/auth/register', { email, password, name }),
   logout: () => api.post('/auth/logout'),
   getCurrentUser: () => api.get('/auth/me'),
+  updateSettings: (data: { phoneNumber?: string; payoutFrequency?: string }) =>
+    api.put('/auth/settings', data),
 };
 
 // Products API

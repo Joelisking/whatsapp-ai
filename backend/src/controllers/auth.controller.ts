@@ -120,6 +120,8 @@ export async function getCurrentUser(req: Request, res: Response, next: NextFunc
         email: true,
         name: true,
         role: true,
+        phoneNumber: true,
+        payoutFrequency: true,
         createdAt: true,
       },
     });
@@ -129,6 +131,48 @@ export async function getCurrentUser(req: Request, res: Response, next: NextFunc
     }
 
     res.json({ user });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateSettings(req: Request, res: Response, next: NextFunction) {
+  try {
+    const authReq = req as any;
+    const { phoneNumber, payoutFrequency } = req.body;
+
+    // Validate payout frequency if provided
+    if (payoutFrequency && !['DAILY', 'WEEKLY', 'BIWEEKLY', 'MONTHLY'].includes(payoutFrequency)) {
+      throw new AppError(400, 'Invalid payout frequency');
+    }
+
+    // Build update data
+    const updateData: any = {};
+    if (phoneNumber !== undefined) {
+      updateData.phoneNumber = phoneNumber;
+    }
+    if (payoutFrequency !== undefined) {
+      updateData.payoutFrequency = payoutFrequency;
+    }
+
+    const user = await prisma.user.update({
+      where: { id: authReq.user.id },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        phoneNumber: true,
+        payoutFrequency: true,
+        createdAt: true,
+      },
+    });
+
+    res.json({
+      user,
+      message: 'Settings updated successfully'
+    });
   } catch (error) {
     next(error);
   }
