@@ -16,8 +16,10 @@ import customerRoutes from './routes/customer.routes';
 import conversationRoutes from './routes/conversation.routes';
 import authRoutes from './routes/auth.routes';
 import analyticsRoutes from './routes/analytics.routes';
+import businessRoutes from './routes/business.routes';
 import { initializeRedis } from './services/redis.service';
 import { initializeDatabase } from './config/database';
+import { initializeCronJobs } from './services/cron.service';
 
 dotenv.config();
 
@@ -50,6 +52,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/businesses', businessRoutes);
 
 // Error handler (must be last)
 app.use(errorHandler);
@@ -64,6 +67,10 @@ async function startServer() {
     // Initialize Database
     await initializeDatabase();
     console.log('✓ Database connected');
+
+    // Initialize cron jobs
+    initializeCronJobs();
+    console.log('✓ Cron jobs initialized');
 
     // Start server
     app.listen(config.port, () => {

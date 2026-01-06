@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { validateWebhookSignature, verifyPayment } from '../services/paystack.service';
 import { sendWhatsAppMessage } from '../services/whatsapp.service';
 import { prisma } from '../config/database';
+import { notifyPaymentSuccess, notifyPaymentFailed } from '../services/owner-notification.service';
 
 /**
  * Handle Paystack webhook events
@@ -142,6 +143,9 @@ Need help? Just send us a message!`;
       body: confirmationMessage,
     });
 
+    // Notify owner about successful payment
+    await notifyPaymentSuccess(orderId);
+
     console.log(`✓ Order ${order.orderNumber} confirmed and customer notified`);
   } catch (error: any) {
     console.error('Error handling payment success:', error);
@@ -204,6 +208,9 @@ Need assistance? Feel free to ask!`;
       to: order.customer.phoneNumber,
       body: failureMessage,
     });
+
+    // Notify owner about failed payment
+    await notifyPaymentFailed(orderId, data.gateway_response);
 
     console.log(`Order ${order.orderNumber} marked as cancelled due to payment failure`);
   } catch (error: any) {

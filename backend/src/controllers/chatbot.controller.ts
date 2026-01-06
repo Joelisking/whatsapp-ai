@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { generateAIResponse, detectIntent, extractProductsFromMessage } from '../services/ai.service';
-import { sendWhatsAppMessage, sendPaymentLink, parseWebhookMessage, verifyWebhook } from '../services/whatsapp.service';
+import { sendWhatsAppMessage, sendPaymentLink, parseWebhookMessage, verifyWebhook, sendTypingIndicator } from '../services/whatsapp.service';
 import { initializePayment, normalizeCurrency } from '../services/paystack.service';
 import { saveConversationContext, getConversationContext } from '../services/redis.service';
+import { notifyNewOrder, notifyAIEscalation } from '../services/owner-notification.service';
 
 export async function handleIncomingMessage(req: Request, res: Response) {
   try {
@@ -133,23 +134,65 @@ export async function handleIncomingMessage(req: Request, res: Response) {
       return res.status(200).send('OK');
     }
 
-    // Generate AI response
-    const aiResponse = await generateAIResponse(body, context);
+    // Send typing indicator
+    await sendTypingIndicator(phoneNumber);
 
-    // Save AI response
-    await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        sender: 'AI',
-        content: aiResponse,
-      },
-    });
+    // Generate AI response with fallback
+    let aiResponse: string;
+    let aiError = false;
 
-    // Send WhatsApp response
-    await sendWhatsAppMessage({
-      to: phoneNumber,
-      body: aiResponse,
-    });
+    try {
+      aiResponse = await generateAIResponse(body, context);
+    } catch (error) {
+      console.error('AI generation failed:', error);
+      aiError = true;
+      aiResponse = 'I apologize, but I encountered an error processing your message.';
+
+      // Notify owner about AI failure
+      await notifyAIEscalation(conversation.id, body, 'AI service error');
+    }
+
+    // Check if AI is escalating to owner
+    const shouldEscalate = aiResponse.toLowerCase().includes('let me connect you') ||
+                           aiResponse.toLowerCase().includes('our team will help') ||
+                           aiResponse.toLowerCase().includes('transfer you to') ||
+                           aiError;
+
+    if (shouldEscalate) {
+      if (!aiError) {
+        await notifyAIEscalation(conversation.id, body, 'AI requested human assistance');
+      }
+
+      const escalationMessage = '👋 Let me connect you with our team for better assistance.\n\nSomeone will be with you shortly. Thank you for your patience!';
+
+      await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          sender: 'AI',
+          content: escalationMessage,
+        },
+      });
+
+      await sendWhatsAppMessage({
+        to: phoneNumber,
+        body: escalationMessage,
+      });
+    } else {
+      // Save AI response
+      await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          sender: 'AI',
+          content: aiResponse,
+        },
+      });
+
+      // Send WhatsApp response
+      await sendWhatsAppMessage({
+        to: phoneNumber,
+        body: aiResponse,
+      });
+    }
 
     // Update context in Redis
     await saveConversationContext(conversation.id, {
@@ -279,6 +322,9 @@ async function handlePurchaseIntent(
 
     // Send payment link via WhatsApp
     await sendPaymentLink(phoneNumber, payment.authorizationUrl, totalAmount, currency, 'paystack');
+
+    // Notify owner about new order
+    await notifyNewOrder(order.id);
 
     // Save AI message
     await prisma.message.create({

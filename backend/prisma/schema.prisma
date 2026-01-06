@@ -9,35 +9,91 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      UserRole @default(ADMIN)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// Multi-tenant Business model
+model Business {
+  id                  String   @id @default(uuid())
+  name                String
+  slug                String   @unique  // URL-friendly identifier
 
+  // WhatsApp Configuration
+  whatsappNumber      String   @unique  // Their WhatsApp Business number
+  whatsappAccessToken String   // Their WhatsApp API token
+  whatsappPhoneId     String   // WhatsApp Phone Number ID
+  whatsappVerifyToken String   @default(uuid())  // Webhook verification
+
+  // Payment Configuration
+  paystackSecretKey   String?  // Their Paystack secret key
+  paystackPublicKey   String?  // Their Paystack public key
+
+  // Owner Settings
+  ownerPhoneNumber    String?
+  ownerNotifications  Boolean  @default(true)
+  aiEscalationEnabled Boolean  @default(true)
+  dailyPayoutTime     String   @default("18:00")
+
+  // Subscription & Limits
+  plan                BusinessPlan @default(FREE)
+  status              BusinessStatus @default(ACTIVE)
+  maxProducts         Int      @default(10)
+  maxOrders           Int      @default(100)
+  messageLimit        Int      @default(1000)  // Monthly message limit
+
+  // Metadata
+  metadata            Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relationships
+  users               User[]
+  products            Product[]
+  customers           Customer[]
+  orders              Order[]
+  conversations       Conversation[]
+
+  @@map("businesses")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  email         String
+  password      String
+  name          String
+  role          UserRole @default(ADMIN)
+  phoneNumber   String?
+  notifications Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([businessId, email])  // Email unique per business
+  @@index([businessId])
   @@map("users")
 }
 
 model Customer {
-  id           String         @id @default(uuid())
-  phoneNumber  String         @unique
-  name         String?
-  email        String?
-  language     String         @default("en")
-  metadata     Json?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id            String         @id @default(uuid())
+  businessId    String
+  business      Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  phoneNumber   String
+  name          String?
+  email         String?
+  language      String         @default("en")
+  metadata      Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   conversations Conversation[]
-  orders       Order[]
+  orders        Order[]
 
+  @@unique([businessId, phoneNumber])  // Same customer can exist across businesses
+  @@index([businessId])
   @@map("customers")
 }
 
 model Product {
   id          String      @id @default(uuid())
+  businessId  String
+  business    Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
   name        String
   description String?
   price       Float
@@ -51,58 +107,63 @@ model Product {
   updatedAt   DateTime    @updatedAt
   orderItems  OrderItem[]
 
+  @@index([businessId])
   @@map("products")
 }
 
 model Conversation {
-  id         String              @id @default(uuid())
+  id         String             @id @default(uuid())
+  businessId String
+  business   Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
   customerId String
-  customer   Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  status     ConversationStatus  @default(ACTIVE)
+  customer   Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  status     ConversationStatus @default(ACTIVE)
   assignedTo String?
   context    Json?
-  createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
   messages   Message[]
 
-  @@index([customerId])
+  @@index([businessId, customerId])
   @@map("conversations")
 }
 
 model Message {
-  id             String       @id @default(uuid())
+  id             String        @id @default(uuid())
   conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender         MessageSender
   content        String
-  messageType    MessageType  @default(TEXT)
+  messageType    MessageType   @default(TEXT)
   metadata       Json?
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime      @default(now())
 
   @@index([conversationId, createdAt])
   @@map("messages")
 }
 
 model Order {
-  id              String      @id @default(uuid())
+  id              String        @id @default(uuid())
+  businessId      String
+  business        Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   customerId      String
-  customer        Customer    @relation(fields: [customerId], references: [id])
-  orderNumber     String      @unique
-  status          OrderStatus @default(PENDING)
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  orderNumber     String
+  status          OrderStatus   @default(PENDING)
   totalAmount     Float
-  currency        String      @default("USD")
+  currency        String        @default("USD")
   paymentIntentId String?
   paymentStatus   PaymentStatus @default(PENDING)
   shippingAddress Json?
   trackingNumber  String?
   notes           String?
   metadata        Json?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   items           OrderItem[]
 
-  @@index([customerId])
-  @@index([orderNumber])
+  @@unique([businessId, orderNumber])  // Order number unique per business
+  @@index([businessId, customerId])
   @@map("orders")
 }
 
@@ -121,14 +182,31 @@ model OrderItem {
 }
 
 enum UserRole {
-  ADMIN
-  AGENT
+  SUPER_ADMIN  // Platform administrator
+  ADMIN        // Business owner
+  AGENT        // Business support agent
+}
+
+enum BusinessPlan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum BusinessStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+  CANCELLED
 }
 
 enum ConversationStatus {
   ACTIVE
   WAITING_FOR_AGENT
+  WAITING_FOR_OWNER
   WITH_AGENT
+  WITH_OWNER
   RESOLVED
   CLOSED
 }
@@ -137,6 +215,7 @@ enum MessageSender {
   CUSTOMER
   AI
   AGENT
+  OWNER
   SYSTEM
 }
 

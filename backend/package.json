@@ -16,6 +16,7 @@
     "@aws-sdk/client-s3": "^3.936.0",
     "@aws-sdk/s3-request-presigner": "^3.935.0",
     "@prisma/client": "^5.18.0",
+    "@types/node-cron": "^3.0.11",
     "axios": "^1.7.7",
     "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.6",
@@ -26,6 +27,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "node-cron": "^4.2.1",
     "redis": "^4.7.0",
     "uuid": "^10.0.0",
     "zod": "^3.23.8"

@@ -8,6 +8,7 @@ export interface AuthRequest extends Request {
     id: string;
     email: string;
     role: string;
+    businessId: string;
   };
 }
 
@@ -27,6 +28,7 @@ export async function authenticate(
       id: string;
       email: string;
       role: string;
+      businessId: string;
     };
 
     req.user = decoded;
@@ -53,3 +55,5 @@ export function authorize(...roles: string[]) {
     next();
   };
 }
+
+export const authorizeAdmin = authorize('ADMIN');
